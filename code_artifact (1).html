@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>鉄道運用ランダム抽選システム - 列車運用指令盤</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(30, 58, 138, 0.25) 0%, transparent 60%),
+        linear-gradient(to bottom, #0b0f19, #0f172a);
+    }
+
+    /* LED電光掲示板風のドットパターン質感 */
+    .led-board {
+      background-color: #07090e;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 0);
+      background-size: 4px 4px;
+      box-shadow: inset 0 2px 15px rgba(0, 0, 0, 0.9), 0 0 25px rgba(15, 23, 42, 0.8);
+    }
+
+    /* ルーレット回転中のテキストブラー・振動風エフェクト */
+    @keyframes slotScroll {
+      0% { transform: translateY(-2px); opacity: 0.85; }
+      50% { transform: translateY(2px); opacity: 1; }
+      100% { transform: translateY(-2px); opacity: 0.85; }
+    }
+    .rolling-text {
+      animation: slotScroll 0.08s infinite linear;
+    }
+
+    /* 激レア演出用アニメーション & グリッチ風スタイル */
+    @keyframes glitchSkew {
+      0%, 92%, 100% { transform: skew(0deg); opacity: 1; }
+      94% { transform: skew(-4deg); opacity: 0.85; }
+      96% { transform: skew(4deg); opacity: 0.9; }
+      98% { transform: skew(-1deg); opacity: 1; }
+    }
+    @keyframes rarePulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(45, 212, 191, 0.15), inset 0 0 25px rgba(15, 23, 42, 0.95); }
+      50% { box-shadow: 0 0 32px rgba(45, 212, 191, 0.3), inset 0 0 35px rgba(13, 148, 136, 0.2); }
+    }
+    .rare-board {
+      animation: rarePulse 3s infinite ease-in-out;
+      border-color: rgba(45, 212, 191, 0.45) !important;
+      background-color: #05080c !important;
+      background-image: 
+        linear-gradient(rgba(45, 212, 191, 0.03) 1px, transparent 1px),
+        radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0);
+      background-size: 100% 3px, 4px 4px;
+    }
+    .glitch-text {
+      animation: glitchSkew 3.5s infinite;
+      text-shadow: 1px 0 rgba(45, 212, 191, 0.6), -1px 0 rgba(244, 63, 94, 0.5);
+    }
+
+    /* カスタムスクロールバー */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-sky-500 selection:text-white">
+
+  <!-- ヘッダー -->
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center shadow-lg shadow-sky-500/20">
+          <!-- 電車アイコン SVG -->
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <rect x="4" y="3" width="16" height="15" rx="3" />
+            <path d="M4 11h16M12 3v8M8 15h.01M16 15h.01M7 18l-2 3M17 18l2 3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-black tracking-wider text-white flex items-center gap-2">
+            列車運用抽選システム
+            <span class="hidden sm:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-sky-400 border border-slate-700">DISPATCH ROULETTE</span>
+          </h1>
+          <p class="text-[11px] text-slate-400">全運用データ対応・条件絞り込み機能搭載</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="toggleListBtn" type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+          <span>候補一覧 (<span id="headerCount">0</span>)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-6 space-y-6">
+
+    <!-- メイン表示盤（LED発車標風ルーレット） -->
+    <section id="displayBoard" class="led-board rounded-2xl border-2 border-slate-700/90 p-5 sm:p-8 transition-all duration-300 relative overflow-hidden">
+      
+      <!-- 激レア出現時専用ミステリアスバナー（通常時は非表示） -->
+      <div id="rareBanner" class="hidden mb-5 rounded-xl bg-slate-950/90 border border-teal-500/40 p-3.5 text-center shadow-inner backdrop-blur-sm">
+        <div class="flex flex-wrap items-center justify-center gap-2 text-teal-300/90 font-mono tracking-widest text-xs sm:text-sm">
+          <span class="px-2 py-0.5 bg-teal-950 text-teal-400 border border-teal-500/40 rounded text-[10px]">UNSCHEDULED DATA</span>
+          <span>…存在しないダイヤデータが検出されました</span>
+        </div>
+        <p class="mt-1.5 text-[11px] sm:text-xs font-medium text-slate-400">
+          観測確率 <span id="rareProbText" class="text-teal-300 font-mono font-bold">0.4%（250分の1）</span> の非公開運用です
+        </p>
+      </div>
+
+      <!-- ステータスバー -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-800/90 text-xs">
+        <div class="flex items-center gap-2">
+          <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+          <span id="statusLabel" class="font-bold tracking-widest text-slate-300 uppercase">READY / 抽選待機中</span>
+        </div>
+        <div class="text-slate-400 font-medium">
+          絞り込み対象：<span id="filteredCountBadge" class="text-sky-400 font-bold text-sm">0</span> 件 / 全 <span id="totalCountBadge">0</span> 件
+        </div>
+      </div>
+
+      <!-- 発車標風メイン表示エリア -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center my-2">
+        
+        <!-- 種別表示 -->
+        <div class="md:col-span-4 flex flex-col">
+          <span class="text-[11px] font-bold tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+            <span>TRAIN TYPE</span>
+            <span class="text-slate-600">/</span>
+            <span>種別</span>
+          </span>
+          <div id="typeBox" class="min-h-[76px] sm:min-h-[88px] rounded-xl bg-slate-900/90 border border-slate-700/80 px-3 py-2 flex flex-col items-center justify-center text-center shadow-inner transition-colors">
+            <span id="resultTypeMain" class="text-xl sm:text-2xl font-black tracking-wide text-slate-200">
+              ---
+            </span>
+            <span id="resultTypeVia" class="text-[11px] sm:text-xs font-semibold text-amber-300/90 mt-1 hidden">
+              （経由情報）
+            </span>
+          </div>
+        </div>
+
+        <!-- 始発駅 → 終着駅 -->
+        <div class="md:col-span-8 grid grid-cols-1 sm:grid-cols-11 gap-2 sm:gap-3 items-center">
+          
+          <!-- 始発駅 -->
+          <div class="sm:col-span-5 flex flex-col">
+            <span class="text-[11px] font-bold tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+              <span>ORIGIN</span>
+              <span class="text-slate-600">/</span>
+              <span>始発駅</span>
+            </span>
+            <div class="min-h-[76px] sm:min-h-[88px] rounded-xl bg-slate-900/90 border border-slate-700/80 px-3 py-2 flex items-center justify-center text-center shadow-inner">
+              <span id="resultOrigin" class="text-2xl sm:text-3xl font-black tracking-wider text-white">
+                ---
+              </span>
+            </div>
+          </div>
+
+          <!-- 矢印 -->
+          <div class="sm:col-span-1 flex items-center justify-center py-1 sm:pt-5">
+            <svg class="w-6 h-6 text-sky-400 rotate-90 sm:rotate-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 12h14"/>
+            </svg>
+          </div>
+
+          <!-- 終着駅 -->
+          <div class="sm:col-span-5 flex flex-col">
+            <span class="text-[11px] font-bold tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
+              <span>DESTINATION</span>
+              <span class="text-slate-600">/</span>
+              <span>終着駅</span>
+            </span>
+            <div id="destBox" class="min-h-[76px] sm:min-h-[88px] rounded-xl bg-slate-900/90 border border-slate-700/80 px-3 py-2 flex items-center justify-center text-center shadow-inner">
+              <span id="resultDest" class="text-2xl sm:text-3xl font-black tracking-wider text-white">
+                ---
+              </span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- エラー・警告メッセージ表示（0件時など） -->
+      <div id="warningMessage" class="hidden mt-4 rounded-xl bg-rose-950/80 border border-rose-500/60 px-4 py-2.5 text-center text-xs sm:text-sm font-bold text-rose-200">
+        条件に一致する運用がありません。絞り込み条件を変更してください。
+      </div>
+
+      <!-- アクションボタンエリア -->
+      <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <button id="spinBtn" type="button" class="w-full sm:w-auto sm:min-w-[280px] py-4 px-8 rounded-xl font-black text-base sm:text-lg tracking-wider text-white bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:via-blue-500 hover:to-indigo-500 active:scale-[0.98] shadow-lg shadow-blue-600/30 border border-sky-400/40 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100">
+          <svg id="spinIcon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span id="spinBtnText">運用をランダム抽選する</span>
+        </button>
+
+        <button id="resetAllBtn" type="button" class="w-full sm:w-auto py-3.5 px-5 rounded-xl font-bold text-xs sm:text-sm text-slate-300 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 transition cursor-pointer">
+          絞り込み全解除
+        </button>
+      </div>
+    </section>
+
+    <!-- 絞り込みフィルターセクション -->
+    <section class="rounded-2xl bg-slate-900/75 border border-slate-800 p-4 sm:p-6 shadow-xl space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-sm sm:text-base font-black text-white flex items-center gap-2">
+            <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+            </svg>
+            絞り込みルーレット設定（複数選択可）
+          </h2>
+          <p class="text-[11px] text-slate-400 mt-0.5">未選択の項目は「すべての候補」から抽選されます。種別は「（〇〇経由）」を区別せずまとめて絞り込みます。</p>
+        </div>
+      </div>
+
+      <!-- 3カラムの絞り込みパネル -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        
+        <!-- 1. 始発駅フィルター -->
+        <div class="rounded-xl bg-slate-950/70 border border-slate-800/90 p-3.5 flex flex-col">
+          <div class="flex items-center justify-between mb-2.5">
+            <span class="text-xs font-black text-sky-400 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+              始発駅で絞る
+              <span id="originSelectedCount" class="text-[11px] font-bold text-slate-400">(指定なし)</span>
+            </span>
+            <button type="button" data-clear="origin" class="clear-cat-btn text-[11px] font-semibold text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 transition">
+              クリア
+            </button>
+          </div>
+          <div id="originFilterList" class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+            <!-- JSで動的生成 -->
+          </div>
+        </div>
+
+        <!-- 2. 終着駅フィルター -->
+        <div class="rounded-xl bg-slate-950/70 border border-slate-800/90 p-3.5 flex flex-col">
+          <div class="flex items-center justify-between mb-2.5">
+            <span class="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              終着駅で絞る
+              <span id="destSelectedCount" class="text-[11px] font-bold text-slate-400">(指定なし)</span>
+            </span>
+            <button type="button" data-clear="dest" class="clear-cat-btn text-[11px] font-semibold text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 transition">
+              クリア
+            </button>
+          </div>
+          <div id="destFilterList" class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+            <!-- JSで動的生成 -->
+          </div>
+        </div>
+
+        <!-- 3. 種別フィルター -->
+        <div class="rounded-xl bg-slate-950/70 border border-slate-800/90 p-3.5 flex flex-col">
+          <div class="flex items-center justify-between mb-2.5">
+            <span class="text-xs font-black text-amber-400 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              種別で絞る
+              <span id="typeSelectedCount" class="text-[11px] font-bold text-slate-400">(指定なし)</span>
+            </span>
+            <button type="button" data-clear="type" class="clear-cat-btn text-[11px] font-semibold text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 transition">
+              クリア
+            </button>
+          </div>
+          <div id="typeFilterList" class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+            <!-- JSで動的生成 -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 抽選履歴セクション -->
+    <section class="rounded-2xl bg-slate-900/75 border border-slate-800 p-4 sm:p-6 shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm sm:text-base font-black text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          抽選履歴（直近15件）
+        </h2>
+        <button id="clearHistoryBtn" type="button" class="text-xs text-slate-400 hover:text-rose-400 transition">
+          履歴を消去
+        </button>
+      </div>
+      <div id="historyContainer" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+        <p id="emptyHistoryText" class="text-xs text-slate-500 py-4 text-center">まだ抽選履歴がありません。上のボタンから運用を抽選してください。</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 対象運用一覧モーダル -->
+  <div id="listModal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[82vh] flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-black text-white">現在の抽選対象運用一覧</h3>
+          <p class="text-xs text-slate-400">絞り込み条件に一致している <span id="modalMatchCount" class="text-sky-400 font-bold">0</span> 件の運用</p>
+        </div>
+        <button id="closeModalBtn" type="button" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="modalListBody" class="p-4 overflow-y-auto space-y-1.5 flex-1">
+        <!-- JSで一覧描画 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- フッター -->
+  <footer class="border-t border-slate-800/80 py-4 text-center text-[11px] text-slate-500">
+    鉄道運用ランダム抽選ツール &copy; Train Operation Dispatch System
+  </footer>
+
+  <script>
+    /**
+     * 全運用生データ（始発駅・終着駅・種別）
+     * ご提示いただいた全214件を1件も漏らさず収録
+     */
+    const RAW_OPERATIONS = [
+      ["尾羽原", "安越", "各停"],
+      ["尾羽原", "千峰", "各停"],
+      ["尾羽原", "千峰", "準急"],
+      ["尾羽原", "雲谷", "各停"],
+      ["尾羽原", "雲谷", "準急"],
+      ["尾羽原", "高徳", "各停"],
+      ["尾羽原", "高徳", "快速"],
+      ["尾羽原", "高徳", "準急"],
+      ["尾羽原", "高徳", "ホリデー快速ほんごう（井問線経由）"],
+      ["尾羽原", "高徳", "快速レッドライナー（井問線経由）"],
+      ["尾羽原", "高徳", "快速本郷アクアラビット（井問線経由）"],
+      ["尾羽原", "紀田", "各停"],
+      ["尾羽原", "紀田", "快速"],
+      ["尾羽原", "紀田", "準急"],
+      ["尾羽原", "紀田", "区間急行"],
+      ["尾羽原", "千鳥", "各停"],
+      ["尾羽原", "千鳥", "準急"],
+      ["尾羽原", "千鳥", "区間急行"],
+      ["尾羽原", "千鳥", "急行"],
+      ["尾羽原", "千鳥", "あさかぜ"],
+      ["尾羽原", "金田", "区間急行"],
+      ["尾羽原", "金田", "快速急行"],
+      ["尾羽原", "百鳥", "急行"],
+      ["尾羽原", "北尾羽", "各停"],
+      ["尾羽原", "北尾羽", "急行"],
+      ["尾羽原", "北尾羽", "快速急行"],
+      ["尾羽原", "北尾羽", "やまかぜ"],
+      ["尾羽原", "北尾羽", "ホリデー快速おばわら"],
+      ["尾羽原", "高徳空港", "各停"],
+      ["尾羽原", "高徳空港", "快速"],
+      ["尾羽原", "高徳空港", "エアポート急行"],
+      ["尾羽原", "高徳空港", "AIR特急"],
+      ["尾羽原", "奥千鳥", "快速レッドライナー（井問線経由、千鳥折り返し千鳥支線経由）"],
+      ["尾羽原", "金田新都心", "各停（飛金線経由）"],
+      ["尾羽原", "金田新都心", "快速（飛金線経由）"],
+      ["尾羽原", "金田新都心", "快速急行（本線、金田線経由）"],
+      ["尾羽原", "金田新都心", "AIR特急"],
+      ["尾羽原", "金田新都心", "つばき"],
+      ["尾羽原", "金田新都心", "スーパーつばき"],
+      ["尾羽原", "金田新都心", "ほしみ"],
+      ["尾羽原", "飛岡", "各停"],
+      ["尾羽原", "飛水竜田", "各停"],
+      ["尾羽原", "飛水柏原", "各停"],
+      ["安越", "尾羽原", "各停"],
+      ["安越", "高徳", "各停"],
+      ["安越", "高徳", "快速"],
+      ["安越", "高徳", "準急"],
+      ["安越", "紀田", "各停"],
+      ["安越", "紀田", "準急"],
+      ["安越", "紀田", "快速おおとり（井問線経由）"],
+      ["安越", "千鳥", "各停（本線経由）"],
+      ["安越", "千鳥", "準急（本線経由）"],
+      ["安越", "千鳥", "快速（井問線経由）"],
+      ["安越", "千鳥", "区間急行（本線経由）"],
+      ["安越", "千鳥", "急行（井問線経由）"],
+      ["安越", "千鳥", "いとい（井問線経由）"],
+      ["安越", "金田", "準急"],
+      ["安越", "金田", "区間急行"],
+      ["安越", "百鳥", "急行"],
+      ["安越", "北尾羽", "区間急行"],
+      ["安越", "高徳空港", "各停"],
+      ["安越", "高徳空港", "快速"],
+      ["安越", "奥千鳥", "快速おおとり（井問線、千鳥折り返し千鳥支線経由）"],
+      ["安越", "本郷", "快速"],
+      ["千峰", "尾羽原", "各停"],
+      ["千峰", "尾羽原", "準急"],
+      ["南雲谷", "雲谷", "各停"],
+      ["南雲谷", "高徳", "各停"],
+      ["雲谷", "尾羽原", "各停"],
+      ["雲谷", "尾羽原", "準急"],
+      ["雲谷", "南雲谷", "各停"],
+      ["雲谷", "紀田", "各停"],
+      ["雲谷", "紀田", "準急"],
+      ["雲谷", "千鳥", "各停"],
+      ["雲谷", "千鳥", "準急"],
+      ["雲谷", "千鳥", "区間急行"],
+      ["雲谷", "金田", "区間急行"],
+      ["雲谷", "北尾羽", "区間急行"],
+      ["高徳", "尾羽原", "各停"],
+      ["高徳", "尾羽原", "快速"],
+      ["高徳", "尾羽原", "準急"],
+      ["高徳", "尾羽原", "ホリデー快速ほんごう（井問線経由）"],
+      ["高徳", "尾羽原", "快速レッドライナー（井問線経由）"],
+      ["高徳", "尾羽原", "快速本郷アクアラビット（井問線経由）"],
+      ["高徳", "安越", "各停"],
+      ["高徳", "安越", "準急"],
+      ["高徳", "南雲谷", "各停"],
+      ["高徳", "穂", "各停"],
+      ["高徳", "千鳥", "各停"],
+      ["高徳", "金田", "各停"],
+      ["高徳", "金田", "準急"],
+      ["高徳", "金田", "区間急行"],
+      ["高徳", "百鳥", "急行"],
+      ["高徳", "北尾羽", "区間急行"],
+      ["高徳", "北尾羽", "急行"],
+      ["高徳", "高徳空港", "各停"],
+      ["高徳", "奥千鳥", "各停"],
+      ["高徳", "金田新都心", "急行"],
+      ["高徳", "金田新都心", "快速急行"],
+      ["高徳", "西問屋町", "各停"],
+      ["高徳", "本郷", "各停"],
+      ["紀田", "尾羽原", "各停"],
+      ["紀田", "尾羽原", "快速"],
+      ["紀田", "尾羽原", "準急"],
+      ["紀田", "尾羽原", "区間急行"],
+      ["紀田", "安越", "各停（本線経由）"],
+      ["紀田", "安越", "準急（本線経由）"],
+      ["紀田", "安越", "快速おおとり（井問線経由）"],
+      ["紀田", "安越", "快速（井問線経由）"],
+      ["紀田", "雲谷", "各停"],
+      ["紀田", "金田", "各停"],
+      ["紀田", "金田", "準急"],
+      ["紀田", "百鳥", "各停"],
+      ["紀田", "北尾羽", "準急"],
+      ["紀田", "北尾羽", "区間急行"],
+      ["紀田", "北尾羽", "急行"],
+      ["紀田", "奥千鳥", "各停"],
+      ["紀田", "金田新都心", "各停"],
+      ["紀田", "金田新都心", "急行"],
+      ["紀田", "本郷", "各停（千鳥支線経由）"],
+      ["穂", "高徳", "各停"],
+      ["穂", "金田", "各停"],
+      ["千鳥", "尾羽原", "各停"],
+      ["千鳥", "尾羽原", "準急"],
+      ["千鳥", "尾羽原", "区間急行"],
+      ["千鳥", "尾羽原", "急行"],
+      ["千鳥", "尾羽原", "あさかぜ"],
+      ["千鳥", "安越", "各停（本線経由）"],
+      ["千鳥", "安越", "快速（井問線経由）"],
+      ["千鳥", "安越", "準急（本線経由）"],
+      ["千鳥", "安越", "区間急行（本線経由）"],
+      ["千鳥", "安越", "いとい（井問線経由）"],
+      ["千鳥", "雲谷", "各停"],
+      ["千鳥", "雲谷", "準急"],
+      ["千鳥", "高徳", "各停"],
+      ["千鳥", "金田", "各停"],
+      ["千鳥", "百鳥", "準急"],
+      ["千鳥", "北尾羽", "各停"],
+      ["千鳥", "北尾羽", "準急"],
+      ["千鳥", "北尾羽", "区間急行"],
+      ["千鳥", "北尾羽", "急行"],
+      ["千鳥", "鵲橋", "各停"],
+      ["千鳥", "金田新都心", "各停"],
+      ["千鳥", "金田新都心", "急行"],
+      ["千鳥", "飛岡", "各停"],
+      ["千鳥", "本郷", "各停（千鳥支線経由）"],
+      ["金田", "尾羽原", "区間急行"],
+      ["金田", "尾羽原", "急行"],
+      ["金田", "安越", "区間急行"],
+      ["金田", "雲谷", "区間急行"],
+      ["金田", "高徳", "各停"],
+      ["金田", "高徳", "準急"],
+      ["金田", "高徳", "区間急行"],
+      ["金田", "紀田", "各停"],
+      ["金田", "紀田", "区間急行"],
+      ["金田", "穂", "各停"],
+      ["金田", "千鳥", "各停"],
+      ["金田", "北尾羽", "各停"],
+      ["金田", "鵲橋", "各停"],
+      ["金田", "金田新都心", "各停"],
+      ["百鳥", "尾羽原", "急行"],
+      ["百鳥", "安越", "急行"],
+      ["百鳥", "高徳", "急行"],
+      ["百鳥", "紀田", "準急"],
+      ["百鳥", "紀田", "急行"],
+      ["百鳥", "千鳥", "各停"],
+      ["百鳥", "千鳥", "準急"],
+      ["百鳥", "千鳥", "急行"],
+      ["百鳥", "北尾羽", "各停"],
+      ["百鳥", "金田新都心", "各停（箱倉支線経由）"],
+      ["北尾羽", "尾羽原", "各停"],
+      ["北尾羽", "尾羽原", "急行"],
+      ["北尾羽", "尾羽原", "快速急行"],
+      ["北尾羽", "尾羽原", "やまかぜ"],
+      ["北尾羽", "尾羽原", "ホリデー快速きたおば"],
+      ["北尾羽", "安越", "急行"],
+      ["北尾羽", "高徳", "各停"],
+      ["北尾羽", "高徳", "準急"],
+      ["北尾羽", "高徳", "区間急行"],
+      ["北尾羽", "紀田", "各停"],
+      ["北尾羽", "紀田", "準急"],
+      ["北尾羽", "紀田", "区間急行"],
+      ["北尾羽", "紀田", "急行"],
+      ["北尾羽", "千鳥", "各停"],
+      ["北尾羽", "千鳥", "準急"],
+      ["北尾羽", "千鳥", "区間急行"],
+      ["北尾羽", "千鳥", "急行"],
+      ["北尾羽", "金田", "各停"],
+      ["北尾羽", "百鳥", "各停"],
+      ["北尾羽", "金田新都心", "各停（箱倉支線経由）"],
+      ["北尾羽", "南箱倉", "各停"],
+      ["高徳空港", "尾羽原", "各停"],
+      ["高徳空港", "尾羽原", "快速"],
+      ["高徳空港", "尾羽原", "エアポート急行"],
+      ["高徳空港", "尾羽原", "AIR特急"],
+      ["高徳空港", "安越", "各停"],
+      ["高徳空港", "安越", "快速"],
+      ["高徳空港", "高徳", "各停"],
+      ["奥千鳥", "尾羽原", "快速レッドライナー（千鳥折り返し井問線経由）"],
+      ["奥千鳥", "安越", "快速おおとり（千鳥折り返し井問線経由）"],
+      ["奥千鳥", "紀田", "各停"],
+      ["奥千鳥", "高徳", "各停"],
+      ["鵲橋", "千鳥", "各停"],
+      ["鵲橋", "金田", "各停"],
+      ["鵲橋", "金田新都心", "各停"],
+      ["金田新都心", "尾羽原", "各停（飛金線経由）"],
+      ["金田新都心", "尾羽原", "快速（飛金線経由）"],
+      ["金田新都心", "尾羽原", "快速急行（金田線経由）"],
+      ["金田新都心", "尾羽原", "AIR特急"],
+      ["金田新都心", "尾羽原", "つばき"],
+      ["金田新都心", "尾羽原", "スーパーつばき"],
+      ["金田新都心", "尾羽原", "ほしみ"],
+      ["金田新都心", "高徳", "急行"],
+      ["金田新都心", "高徳", "快速急行"],
+      ["金田新都心", "紀田", "各停"],
+      ["金田新都心", "紀田", "急行"],
+      ["金田新都心", "千鳥", "各停"],
+      ["金田新都心", "千鳥", "急行"],
+      ["金田新都心", "金田", "各停"],
+      ["金田新都心", "百鳥", "各停（箱倉支線経由）"],
+      ["金田新都心", "北尾羽", "各停（箱倉支線経由）"],
+      ["金田新都心", "鵲橋", "各停"],
+      ["金田新都心", "南箱倉", "各停"],
+      ["金田新都心", "飛岡", "各停"],
+      ["金田新都心", "飛岡", "快速"],
+      ["南箱倉", "金田新都心", "各停"],
+      ["南箱倉", "北尾羽", "各停"],
+      ["飛岡", "尾羽原", "各停"],
+      ["飛岡", "千鳥", "各停"],
+      ["飛岡", "金田新都心", "各停"],
+      ["飛岡", "金田新都心", "快速"],
+      ["飛岡", "西問屋町", "各停"],
+      ["飛岡", "飛水柏原", "各停"],
+      ["飛岡", "本郷", "各停"],
+      ["西問屋町", "高徳", "各停"],
+      ["西問屋町", "飛岡", "各停"],
+      ["飛水竜田", "尾羽原", "各停"],
+      ["飛水柏原", "尾羽原", "各停"],
+      ["飛水柏原", "尾羽原", "快速"],
+      ["飛水柏原", "飛岡", "各停"],
+      ["本郷", "安越", "快速"],
+      ["本郷", "高徳", "各停（井問線経由）"],
+      ["本郷", "紀田", "各停（千鳥支線経由）"],
+      ["本郷", "千鳥", "各停（千鳥支線経由）"],
+      ["本郷", "飛岡", "各停"]
+    ];
+
+    /**
+     * 激レア秘密運用の設定
+     * 出現確率: 0.4% (250分の1)
+     */
+    const SECRET_RARE_PROBABILITY = 0.004; // 0.4%
+    const SECRET_RARE_PROB_LABEL = "0.4%（250分の1）";
+    const SECRET_DEST = "科学研究所";
+    const SECRET_TYPE = "隧ｦ鬨鍋畑ﾜ蝗樣";
+
+    /**
+     * 種別文字列から「（...経由...）」を除いた基本種別名と経由情報を分離するヘルパー
+     */
+    function parseTrainType(fullType) {
+      const match = fullType.match(/^([^（(]+)([（(].+[）)])?$/);
+      if (match) {
+        return {
+          baseType: match[1].trim(),
+          viaText: match[2] ? match[2].trim() : ""
+        };
+      }
+      return { baseType: fullType, viaText: "" };
+    }
+
+    // 構造化された全運用リスト
+    const OPERATIONS = RAW_OPERATIONS.map((item, idx) => {
+      const [origin, dest, fullType] = item;
+      const { baseType, viaText } = parseTrainType(fullType);
+      return {
+        id: idx + 1,
+        origin,
+        dest,
+        fullType,
+        baseType,
+        viaText
+      };
+    });
+
+    // ユニークな始発駅・終着駅・基本種別の抽出（登場順を保持しつつ整理）
+    const UNIQUE_ORIGINS = [...new Set(OPERATIONS.map(op => op.origin))];
+    const UNIQUE_DESTS = [...new Set(OPERATIONS.map(op => op.dest))];
+    const UNIQUE_BASE_TYPES = [...new Set(OPERATIONS.map(op => op.baseType))];
+
+    // 選択状態（Setで管理）
+    const selectedFilters = {
+      origin: new Set(),
+      dest: new Set(),
+      type: new Set()
+    };
+
+    // アプリ状態
+    let isRolling = false;
+    let rollHistory = [];
+
+    /**
+     * 種別に応じたカラーバッジスタイルを返す
+     */
+    function getTypeColorClasses(baseType, isRare = false) {
+      if (isRare) {
+        return {
+          border: "border-teal-500/50",
+          bg: "bg-slate-950/95",
+          text: "text-teal-300",
+          pill: "bg-teal-950/80 text-teal-300 border-teal-500/40"
+        };
+      }
+      if (baseType === "各停") {
+        return {
+          border: "border-slate-500",
+          bg: "bg-slate-800/90",
+          text: "text-slate-100",
+          pill: "bg-slate-700/80 text-slate-200 border-slate-500"
+        };
+      }
+      if (baseType === "準急") {
+        return {
+          border: "border-emerald-500",
+          bg: "bg-emerald-950/80",
+          text: "text-emerald-300",
+          pill: "bg-emerald-900/70 text-emerald-300 border-emerald-500/70"
+        };
+      }
+      if (baseType === "区間急行") {
+        return {
+          border: "border-lime-500",
+          bg: "bg-lime-950/80",
+          text: "text-lime-300",
+          pill: "bg-lime-900/70 text-lime-300 border-lime-500/70"
+        };
+      }
+      if (baseType.includes("ホリデー快速") || baseType.includes("快速レッドライナー") || baseType.includes("快速本郷アクアラビット") || baseType.includes("快速おおとり")) {
+        return {
+          border: "border-cyan-400",
+          bg: "bg-cyan-950/80",
+          text: "text-cyan-300",
+          pill: "bg-cyan-900/70 text-cyan-300 border-cyan-400/70"
+        };
+      }
+      if (baseType === "快速") {
+        return {
+          border: "border-sky-500",
+          bg: "bg-sky-950/80",
+          text: "text-sky-300",
+          pill: "bg-sky-900/70 text-sky-300 border-sky-500/70"
+        };
+      }
+      if (baseType === "快速急行") {
+        return {
+          border: "border-purple-500",
+          bg: "bg-purple-950/80",
+          text: "text-purple-300",
+          pill: "bg-purple-900/70 text-purple-300 border-purple-500/70"
+        };
+      }
+      if (baseType.includes("急行")) {
+        return {
+          border: "border-orange-500",
+          bg: "bg-orange-950/80",
+          text: "text-orange-300",
+          pill: "bg-orange-900/70 text-orange-300 border-orange-500/70"
+        };
+      }
+      // 特急・ライナー愛称系（AIR特急、あさかぜ、やまかぜ、いとい、つばき、スーパーつばき、ほしみ）
+      return {
+        border: "border-rose-500",
+        bg: "bg-rose-950/80",
+        text: "text-rose-300",
+        pill: "bg-rose-900/70 text-rose-300 border-rose-500/70"
+      };
+    }
+
+    /**
+     * 現在の絞り込み条件に一致する運用一覧を取得
+     */
+    function getFilteredOperations() {
+      return OPERATIONS.filter(op => {
+        const matchOrigin = selectedFilters.origin.size === 0 || selectedFilters.origin.has(op.origin);
+        const matchDest = selectedFilters.dest.size === 0 || selectedFilters.dest.has(op.dest);
+        const matchType = selectedFilters.type.size === 0 || selectedFilters.type.has(op.baseType);
+        return matchOrigin && matchDest && matchType;
+      });
+    }
+
+    /**
+     * フィルターチップUIの初期描画
+     */
+    function renderFilterChips() {
+      const originContainer = document.getElementById("originFilterList");
+      const destContainer = document.getElementById("destFilterList");
+      const typeContainer = document.getElementById("typeFilterList");
+
+      originContainer.innerHTML = "";
+      destContainer.innerHTML = "";
+      typeContainer.innerHTML = "";
+
+      UNIQUE_ORIGINS.forEach(station => {
+        originContainer.appendChild(createChipButton("origin", station));
+      });
+
+      // 終着駅リスト（秘密の「科学研究所」はここには絶対に含めない）
+      UNIQUE_DESTS.forEach(station => {
+        destContainer.appendChild(createChipButton("dest", station));
+      });
+
+      UNIQUE_BASE_TYPES.forEach(baseType => {
+        typeContainer.appendChild(createChipButton("type", baseType));
+      });
+    }
+
+    /**
+     * 個別のフィルターチップボタン生成
+     */
+    function createChipButton(category, value) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = value;
+      btn.dataset.category = category;
+      btn.dataset.value = value;
+      btn.className = "filter-chip text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none bg-slate-900 text-slate-300 border-slate-700/90 hover:border-slate-500";
+      
+      btn.addEventListener("click", () => {
+        if (isRolling) return;
+        const set = selectedFilters[category];
+        if (set.has(value)) {
+          set.delete(value);
+        } else {
+          set.add(value);
+        }
+        updateFilterUI();
+      });
+
+      return btn;
+    }
+
+    /**
+     * フィルター選択状態と対象件数のUI更新
+     */
+    function updateFilterUI() {
+      // 全チップのスタイル更新
+      document.querySelectorAll(".filter-chip").forEach(btn => {
+        const cat = btn.dataset.category;
+        const val = btn.dataset.value;
+        const isSelected = selectedFilters[cat].has(val);
+
+        if (isSelected) {
+          if (cat === "origin") {
+            btn.className = "filter-chip text-xs font-bold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none bg-sky-600 text-white border-sky-400 shadow-sm shadow-sky-500/30";
+          } else if (cat === "dest") {
+            btn.className = "filter-chip text-xs font-bold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none bg-emerald-600 text-white border-emerald-400 shadow-sm shadow-emerald-500/30";
+          } else {
+            btn.className = "filter-chip text-xs font-bold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none bg-amber-600 text-white border-amber-400 shadow-sm shadow-amber-500/30";
+          }
+        } else {
+          btn.className = "filter-chip text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none bg-slate-900 text-slate-300 border-slate-700/90 hover:border-slate-500 hover:text-white";
+        }
+      });
+
+      // カウント表示更新
+      document.getElementById("originSelectedCount").textContent = selectedFilters.origin.size > 0 ? `(${selectedFilters.origin.size}駅選択)` : "(指定なし)";
+      document.getElementById("destSelectedCount").textContent = selectedFilters.dest.size > 0 ? `(${selectedFilters.dest.size}駅選択)` : "(指定なし)";
+      document.getElementById("typeSelectedCount").textContent = selectedFilters.type.size > 0 ? `(${selectedFilters.type.size}種選択)` : "(指定なし)";
+
+      const filtered = getFilteredOperations();
+      const count = filtered.length;
+
+      document.getElementById("filteredCountBadge").textContent = count;
+      document.getElementById("headerCount").textContent = count;
+      document.getElementById("totalCountBadge").textContent = OPERATIONS.length;
+
+      const spinBtn = document.getElementById("spinBtn");
+      const warningMsg = document.getElementById("warningMessage");
+
+      if (count === 0) {
+        spinBtn.disabled = true;
+        warningMsg.classList.remove("hidden");
+      } else {
+        spinBtn.disabled = false;
+        warningMsg.classList.add("hidden");
+      }
+    }
+
+    /**
+     * 抽選結果を表示盤に反映する
+     */
+    function displayOperation(op, isFinal = false) {
+      const displayBoard = document.getElementById("displayBoard");
+      const rareBanner = document.getElementById("rareBanner");
+      const typeBox = document.getElementById("typeBox");
+      const destBox = document.getElementById("destBox");
+      const resultTypeMain = document.getElementById("resultTypeMain");
+      const resultTypeVia = document.getElementById("resultTypeVia");
+      const resultOrigin = document.getElementById("resultOrigin");
+      const resultDest = document.getElementById("resultDest");
+
+      const isSecretRare = Boolean(op.isSecretRare);
+      const colors = getTypeColorClasses(op.baseType, isSecretRare);
+
+      // 種別ボックスのスタイル反映
+      typeBox.className = `min-h-[76px] sm:min-h-[88px] rounded-xl border-2 px-3 py-2 flex flex-col items-center justify-center text-center shadow-inner transition-colors ${colors.bg} ${colors.border}`;
+      resultTypeMain.className = `text-xl sm:text-2xl font-black tracking-wide ${colors.text} ${isSecretRare && isFinal ? 'glitch-text' : ''}`;
+      resultTypeMain.textContent = op.baseType;
+
+      if (op.viaText) {
+        resultTypeVia.textContent = op.viaText;
+        resultTypeVia.classList.remove("hidden");
+      } else {
+        resultTypeVia.textContent = "";
+        resultTypeVia.classList.add("hidden");
+      }
+
+      resultOrigin.textContent = op.origin;
+      resultDest.textContent = op.dest;
+
+      if (isFinal && isSecretRare) {
+        // 激レア演出の有効化（控えめでミステリアスなトーン）
+        displayBoard.classList.add("rare-board");
+        rareBanner.classList.remove("hidden");
+        document.getElementById("rareProbText").textContent = SECRET_RARE_PROB_LABEL;
+        destBox.className = "min-h-[76px] sm:min-h-[88px] rounded-xl bg-slate-950/95 border border-teal-500/50 px-3 py-2 flex items-center justify-center text-center shadow-inner";
+        resultDest.className = "text-2xl sm:text-3xl font-black tracking-widest text-teal-200 glitch-text";
+      } else {
+        // 通常表示にリセット
+        displayBoard.classList.remove("rare-board");
+        rareBanner.classList.add("hidden");
+        destBox.className = "min-h-[76px] sm:min-h-[88px] rounded-xl bg-slate-900/90 border border-slate-700/80 px-3 py-2 flex items-center justify-center text-center shadow-inner";
+        resultDest.className = "text-2xl sm:text-3xl font-black tracking-wider text-white";
+      }
+    }
+
+    /**
+     * ルーレット抽選の実行
+     */
+    function startRoulette() {
+      if (isRolling) return;
+      const candidates = getFilteredOperations();
+      if (candidates.length === 0) return;
+
+      isRolling = true;
+      const spinBtn = document.getElementById("spinBtn");
+      const spinIcon = document.getElementById("spinIcon");
+      const spinBtnText = document.getElementById("spinBtnText");
+      const statusIndicator = document.getElementById("statusIndicator");
+      const statusLabel = document.getElementById("statusLabel");
+
+      spinBtn.disabled = true;
+      spinIcon.classList.add("animate-spin");
+      spinBtnText.textContent = "運用抽選中...";
+      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
+      statusLabel.textContent = "DRAWING / 運用検索中...";
+      statusLabel.className = "font-bold tracking-widest text-amber-300 uppercase";
+
+      // 回転中のテキスト振動クラス追加
+      const resultOrigin = document.getElementById("resultOrigin");
+      const resultDest = document.getElementById("resultDest");
+      const resultTypeMain = document.getElementById("resultTypeMain");
+      resultOrigin.classList.add("rolling-text");
+      resultDest.classList.add("rolling-text");
+      resultTypeMain.classList.add("rolling-text");
+
+      // 激レア発生判定：終着駅が絞り込まれていない（size === 0）時のみ判定
+      const isDestUnfiltered = selectedFilters.dest.size === 0;
+      const triggerSecretRare = isDestUnfiltered && (Math.random() < SECRET_RARE_PROBABILITY);
+
+      // 最終結果の決定
+      let finalResult;
+      if (triggerSecretRare) {
+        // 始発駅は現在の絞り込み候補内の始発駅からランダム選出
+        const availableOrigins = [...new Set(candidates.map(c => c.origin))];
+        const chosenOrigin = availableOrigins[Math.floor(Math.random() * availableOrigins.length)];
+        finalResult = {
+          origin: chosenOrigin,
+          dest: SECRET_DEST,
+          fullType: SECRET_TYPE,
+          baseType: SECRET_TYPE,
+          viaText: "",
+          isSecretRare: true
+        };
+      } else {
+        const picked = candidates[Math.floor(Math.random() * candidates.length)];
+        finalResult = { ...picked, isSecretRare: false };
+      }
+
+      // ルーレットアニメーション（約1.1秒かけて徐々に減速しながら停止）
+      let step = 0;
+      const totalSteps = 20;
+
+      function tick() {
+        step++;
+        if (step < totalSteps) {
+          // ダミー表示（候補が1件しかない場合でも回転感を出すため全運用からも時々混ぜる）
+          const pool = candidates.length > 1 ? candidates : OPERATIONS;
+          const randomOp = pool[Math.floor(Math.random() * pool.length)];
+          displayOperation(randomOp, false);
+
+          // 後半にかけて間隔を広げるイージング
+          const delay = 35 + Math.pow(step / totalSteps, 2.2) * 140;
+          setTimeout(tick, delay);
+        } else {
+          // 確定処理
+          resultOrigin.classList.remove("rolling-text");
+          resultDest.classList.remove("rolling-text");
+          resultTypeMain.classList.remove("rolling-text");
+
+          displayOperation(finalResult, true);
+          addHistory(finalResult);
+
+          isRolling = false;
+          spinBtn.disabled = false;
+          spinIcon.classList.remove("animate-spin");
+          spinBtnText.textContent = "もう一度抽選する";
+
+          if (finalResult.isSecretRare) {
+            statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-teal-400/80 animate-pulse shadow-[0_0_8px_#2dd4bf]";
+            statusLabel.textContent = "UNKNOWN SIGNAL / 非公開運用";
+            statusLabel.className = "font-mono font-bold tracking-widest text-teal-400/90 uppercase";
+          } else {
+            statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]";
+            statusLabel.textContent = "CONFIRMED / 運用確定";
+            statusLabel.className = "font-bold tracking-widest text-sky-400 uppercase";
+          }
+        }
+      }
+
+      tick();
+    }
+
+    /**
+     * 抽選履歴の追加と描画
+     */
+    function addHistory(op) {
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+
+      rollHistory.unshift({
+        ...op,
+        time: timeStr
+      });
+
+      if (rollHistory.length > 15) {
+        rollHistory.pop();
+      }
+
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const container = document.getElementById("historyContainer");
+
+      if (rollHistory.length === 0) {
+        container.innerHTML = `<p id="emptyHistoryText" class="text-xs text-slate-500 py-4 text-center">まだ抽選履歴がありません。上のボタンから運用を抽選してください。</p>`;
+        return;
+      }
+
+      container.innerHTML = "";
+      rollHistory.forEach((item, index) => {
+        const colors = getTypeColorClasses(item.baseType, item.isSecretRare);
+        const row = document.createElement("div");
+
+        if (item.isSecretRare) {
+          row.className = "flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/90 border border-teal-500/40 text-xs";
+        } else {
+          row.className = "flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-950/70 border border-slate-800/90 text-xs";
+        }
+
+        row.innerHTML = `
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <span class="text-[10px] font-mono text-slate-500">#${rollHistory.length - index} [${item.time}]</span>
+            <span class="font-bold px-2 py-0.5 rounded border ${colors.pill}">${item.fullType}</span>
+            <span class="font-black text-white text-sm">${item.origin}</span>
+            <span class="text-slate-500">→</span>
+            <span class="font-black ${item.isSecretRare ? 'text-teal-300' : 'text-white'} text-sm">${item.dest}</span>
+            ${item.isSecretRare ? `<span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 border border-teal-500/40 font-mono text-[10px]">非公開 ${SECRET_RARE_PROB_LABEL}</span>` : ''}
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    /**
+     * 候補一覧モーダルの描画と開閉
+     */
+    function openListModal() {
+      const filtered = getFilteredOperations();
+      const modal = document.getElementById("listModal");
+      const body = document.getElementById("modalListBody");
+      document.getElementById("modalMatchCount").textContent = filtered.length;
+
+      body.innerHTML = "";
+      if (filtered.length === 0) {
+        body.innerHTML = `<p class="text-center text-sm text-slate-400 py-8">現在の絞り込み条件に一致する運用はありません。</p>`;
+      } else {
+        filtered.forEach(op => {
+          const colors = getTypeColorClasses(op.baseType, false);
+          const item = document.createElement("div");
+          item.className = "flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-950/80 border border-slate-800 text-xs";
+          item.innerHTML = `
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold px-2 py-0.5 rounded border ${colors.pill}">${op.fullType}</span>
+              <span class="font-bold text-slate-200">${op.origin}</span>
+              <span class="text-slate-500">→</span>
+              <span class="font-bold text-slate-200">${op.dest}</span>
+            </div>
+            <span class="text-[10px] text-slate-600 font-mono">No.${String(op.id).padStart(3, "0")}</span>
+          `;
+          body.appendChild(item);
+        });
+      }
+
+      modal.classList.remove("hidden");
+    }
+
+    // イベントリスナーの初期化
+    window.addEventListener("DOMContentLoaded", () => {
+      renderFilterChips();
+      updateFilterUI();
+
+      // 抽選ボタン
+      document.getElementById("spinBtn").addEventListener("click", startRoulette);
+
+      // カテゴリー別クリアボタン
+      document.querySelectorAll(".clear-cat-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (isRolling) return;
+          const cat = btn.dataset.clear;
+          selectedFilters[cat].clear();
+          updateFilterUI();
+        });
+      });
+
+      // 全条件リセットボタン
+      document.getElementById("resetAllBtn").addEventListener("click", () => {
+        if (isRolling) return;
+        selectedFilters.origin.clear();
+        selectedFilters.dest.clear();
+        selectedFilters.type.clear();
+        updateFilterUI();
+      });
+
+      // 履歴消去ボタン
+      document.getElementById("clearHistoryBtn").addEventListener("click", () => {
+        rollHistory = [];
+        renderHistory();
+      });
+
+      // 一覧モーダル開閉
+      document.getElementById("toggleListBtn").addEventListener("click", openListModal);
+      document.getElementById("closeModalBtn").addEventListener("click", () => {
+        document.getElementById("listModal").classList.add("hidden");
+      });
+      document.getElementById("listModal").addEventListener("click", (e) => {
+        if (e.target.id === "listModal") {
+          document.getElementById("listModal").classList.add("hidden");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
